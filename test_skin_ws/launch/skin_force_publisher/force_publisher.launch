@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- Launch the force publisher node -->
+    <node name="skin_force_publisher" 
+          pkg="skin_force_publisher" 
+          type="force_publisher_node" 
+          output="screen"
+          required="true">
+        <!-- The output="screen" ensures we see all console output -->
+        <!-- The required="true" means if this node dies, the whole launch file stops -->
+    </node>
+</launch>
