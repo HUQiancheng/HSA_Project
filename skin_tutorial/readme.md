@@ -54,8 +54,8 @@ Open another terminal in vscode and run:
 # Source the ROS environment
 ross
 
-# Run the skin driver
-roslaunch tum_ics_skin_driver_events skin_driver_ftdi.launch FTDI_SERIAL:=FT6TWWJ2
+# Run the skin driver // sudo dmesg 
+roslaunch tum_ics_skin_driver_events skin_driver_ftdi.launch FTDI_SERIAL:=FT6B8EHV
 ```
 
 You can now execute commands in the skin driver, e.g. 
