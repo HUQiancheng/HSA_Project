@@ -5,7 +5,7 @@ import serial
 import time
 
 # 串口设备路径（请根据你的系统确认是否是 ttyUSB0 或 ttyACM0）
-SERIAL_PORT = "/dev/ttyUSB0"
+SERIAL_PORT = "/dev/ttyACM0"
 BAUDRATE = 9600
 
 # 力和PWM映射参数
@@ -29,7 +29,7 @@ class SerialMotorController:
         # 初始化串口连接
         self.ser = serial.Serial(SERIAL_PORT, BAUDRATE, timeout=1)
         rospy.init_node("serial_motor_controller")
-        rospy.Subscriber("/forces", Float64MultiArray, self.callback)
+        rospy.Subscriber("/skin_forces", Float64MultiArray, self.callback)
         rospy.loginfo("✅ 串口电机控制节点已启动，监听 /forces")
 
     def callback(self, msg):
