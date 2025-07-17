@@ -6,7 +6,15 @@
           type="force_publisher_node" 
           output="screen"
           required="true">
+        
         <!-- The output="screen" ensures we see all console output -->
         <!-- The required="true" means if this node dies, the whole launch file stops -->
+        
+        <!-- IMPORTANT: Qt Display Configuration for Headless Systems -->
+        <!-- The TUM ICS skin API uses QApplication which by default tries to connect to a display. -->
+        <!-- On headless systems (Jetson, Raspberry Pi, Docker without X11), this causes a crash. -->
+        <!-- Setting QT_QPA_PLATFORM to "offscreen" tells Qt to run without any display hardware. -->
+        <!-- This is necessary for deployment on embedded ARM devices or servers without monitors. -->
+        <env name="QT_QPA_PLATFORM" value="offscreen"/>
     </node>
 </launch>
