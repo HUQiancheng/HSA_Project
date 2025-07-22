@@ -4,86 +4,128 @@ from std_msgs.msg import Float64MultiArray
 import serial
 import time
 
-# 串口设备路径（请根据你的系统确认是否是 ttyUSB0 或 ttyACM0）
+# Serial configuration
 SERIAL_PORT = "/dev/ttyACM0"
 BAUDRATE = 9600
 
-# 力和PWM映射参数
-F_MIN = 0.006
-F_MAX = 0.02
-PWM_MIN = 0
-PWM_MAX = 255
+# Force to PWM mapping parameters
+F_MIN = 0.003      # Baseline force reading
+F_MAX = 0.02       # Maximum expected force
+PWM_MIN = 80       # Minimum PWM for motor movement
+PWM_MAX = 255      # Maximum PWM
+
+# E-skin cell ID mapping (from documentation)
+CELL_FRONT = 0  # Index 0 = Cell ID 1 = Front
+CELL_LEFT = 1   # Index 1 = Cell ID 2 = Left
+CELL_BACK = 2   # Index 2 = Cell ID 3 = Back
+CELL_RIGHT = 3  # Index 3 = Cell ID 4 = Right
 
 def map_force_to_pwm(force, f_min=F_MIN, f_max=F_MAX, pwm_min=PWM_MIN, pwm_max=PWM_MAX):
-    """将 0.001~0.01 范围的力映射到 PWM（80~255）"""
+    """Map force sensor reading to PWM value"""
     if force < f_min:
         return 0
     if force > f_max:
         force = f_max
+    
     scale = (force - f_min) / (f_max - f_min)
     pwm = int(pwm_min + scale * (pwm_max - pwm_min))
     return min(max(pwm, 0), 255)
 
-class SerialMotorController:
+class MotorController:
     def __init__(self):
-        # 初始化串口连接
-        self.ser = serial.Serial(SERIAL_PORT, BAUDRATE, timeout=1)
-        rospy.init_node("serial_motor_controller")
-        rospy.Subscriber("/skin_forces", Float64MultiArray, self.callback)
-        rospy.loginfo("✅ 串口电机控制节点已启动，监听 /forces")
-
-    def callback(self, msg):
-        f = msg.data
-        if len(f) != 4:
-            rospy.logwarn("⚠️ /forces 消息必须包含4个方向的力值")
-            return
-
-        f_front, f_back, f_left, f_right = f
-
-        # 找最大力的方向
-        direction = max(
-            [('front', f_front), ('back', f_back),
-             ('left', f_left), ('right', f_right)],
-            key=lambda x: abs(x[1])
-        )
-        name, strength = direction
-        pwm = map_force_to_pwm(abs(strength))
+        # Initialize ROS node
+        rospy.init_node("motor_controller")
         
-        if pwm == 0:
-            cmd = "0,0,0,0\n"
-            self.ser.write(cmd.encode())
-            rospy.loginfo("Stop")
+        # Initialize serial connection
+        try:
+            self.ser = serial.Serial(SERIAL_PORT, BAUDRATE, timeout=1)
+            time.sleep(2)  # Wait for Arduino to reset
+            rospy.loginfo(f"✅ Connected to Arduino on {SERIAL_PORT}")
+        except serial.SerialException as e:
+            rospy.logerr(f"❌ Failed to open serial port: {e}")
+            rospy.logerr("Try: sudo usermod -a -G dialout $USER && logout/login")
+            raise
+        
+        # Subscribe to skin forces topic
+        rospy.Subscriber("/skin_forces", Float64MultiArray, self.force_callback)
+        rospy.loginfo("✅ Motor controller ready, listening to /skin_forces")
+        
+    def force_callback(self, msg):
+        """Process force data and send motor commands"""
+        forces = msg.data
+        
+        if len(forces) != 4:
+            rospy.logwarn("⚠️ Expected 4 force values, got %d", len(forces))
             return
-                        
-
-        if name == 'front':     # 向后推 → 后退（电机反转）
-            pwmA, dirA = pwm, 0
-            pwmB, dirB = pwm, 0
-        elif name == 'back':    # 向前推 → 前进（正转）
-            pwmA, dirA = pwm, 1
-            pwmB, dirB = pwm, 1
-        elif name == 'left':    # 向右推 → 左转（右轮前进）
-            pwmA, dirA = pwm, 1
-            pwmB, dirB = pwm, 0
-        elif name == 'right':   # 向左推 → 右转（左轮前进）
-            pwmA, dirA = pwm, 0
-            pwmB, dirB = pwm, 1
-        else:
-            pwmA = pwmB = dirA = dirB = 0
-
+        
+        # Extract forces with correct mapping
+        f_front = forces[CELL_FRONT]
+        f_left = forces[CELL_RIGHT]
+        f_back = forces[CELL_BACK]
+        f_right = forces[CELL_LEFT]
+        
+        # Find direction with maximum force
+        max_force = max(f_front, f_left, f_back, f_right)
+        
+        # Calculate PWM from force magnitude
+        pwm = map_force_to_pwm(max_force)
+        
+        # Determine motor commands based on which sensor has max force
+        if pwm == 0 or max_force < F_MIN:
+            # Stop motors if no significant force
+            self.send_motor_command(0, 0, 0, 0)
+            rospy.loginfo("🛑 Stop (no force detected)")
+            
+        elif max_force == f_front:
+            # Front touched → Move backward
+            self.send_motor_command(pwm, 0, pwm, 0)  # Both motors reverse
+            rospy.loginfo(f"⬇️ Backward (Front sensor: {f_front:.4f}, PWM: {pwm})")
+            
+        elif max_force == f_back:
+            # Back touched → Move forward
+            self.send_motor_command(pwm, 1, pwm, 1)  # Both motors forward
+            rospy.loginfo(f"⬆️ Forward (Back sensor: {f_back:.4f}, PWM: {pwm})")
+            
+        elif max_force == f_left:
+            # Left touched → Turn RIGHT (left forward, right reverse)
+            self.send_motor_command(pwm, 1, pwm, 0)
+            rospy.loginfo(f"➡️ Turn Right (Left sensor: {f_left:.4f}, PWM: {pwm})")
+            
+        elif max_force == f_right:
+            # Right touched → Turn LEFT (right forward, left reverse)
+            self.send_motor_command(pwm, 0, pwm, 1)
+            rospy.loginfo(f"⬅️ Turn Left (Right sensor: {f_right:.4f}, PWM: {pwm})")
+    
+    def send_motor_command(self, pwmA, dirA, pwmB, dirB):
+        """Send motor command to Arduino
+        
+        Motor A: Left side motors
+        Motor B: Right side motors
+        Direction: 1 = forward, 0 = reverse
+        """
         cmd = f"{pwmA},{dirA},{pwmB},{dirB}\n"
         try:
             self.ser.write(cmd.encode())
-            rospy.loginfo(f"📤 已发送: {cmd.strip()} （方向: {name}, 力: {strength:.4f}, PWM: {pwm}）")
+            rospy.logdebug(f"Sent: {cmd.strip()}")
         except serial.SerialException as e:
-            rospy.logerr(f"❌ 串口写入失败: {e}")
-
+            rospy.logerr(f"❌ Serial write failed: {e}")
+    
+    def shutdown(self):
+        """Clean shutdown - stop motors and close serial"""
+        rospy.loginfo("Shutting down motor controller...")
+        self.send_motor_command(0, 0, 0, 0)
+        self.ser.close()
+    
     def run(self):
+        """Main loop"""
+        rospy.on_shutdown(self.shutdown)
         rospy.spin()
 
 if __name__ == '__main__':
     try:
-        controller = SerialMotorController()
+        controller = MotorController()
         controller.run()
     except rospy.ROSInterruptException:
         pass
+    except Exception as e:
+        rospy.logerr(f"Fatal error: {e}")
