@@ -9,9 +9,9 @@ SERIAL_PORT = "/dev/ttyACM0"
 BAUDRATE = 9600
 
 # 力和PWM映射参数
-F_MIN = 0.001
-F_MAX = 0.01
-PWM_MIN = 80
+F_MIN = 0.006
+F_MAX = 0.02
+PWM_MIN = 0
 PWM_MAX = 255
 
 def map_force_to_pwm(force, f_min=F_MIN, f_max=F_MAX, pwm_min=PWM_MIN, pwm_max=PWM_MAX):
@@ -48,6 +48,13 @@ class SerialMotorController:
         )
         name, strength = direction
         pwm = map_force_to_pwm(abs(strength))
+        
+        if pwm == 0:
+            cmd = "0,0,0,0\n"
+            self.ser.write(cmd.encode())
+            rospy.loginfo("Stop")
+            return
+                        
 
         if name == 'front':     # 向后推 → 后退（电机反转）
             pwmA, dirA = pwm, 0
