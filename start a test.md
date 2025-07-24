@@ -28,3 +28,7 @@ T5:
 ross
 cd test_skin_ws/
 source devel/setup.bash 
+
+sudo chmod 666 /dev/ttyACM0
+ls -l /dev/ttyACM0
+roslaunch lidar_publisher lidar_publisher.launch 
