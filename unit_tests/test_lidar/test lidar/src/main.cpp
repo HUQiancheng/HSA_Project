@@ -1,18 +1,18 @@
 #include <Arduino.h>
+#include <LIDARLite.h>
 
-// put function declarations here:
-int myFunction(int, int);
+LIDARLite lidarLite;
 
 void setup() {
-  // put your setup code here, to run once:
-  int result = myFunction(2, 3);
+    Serial.begin(115200);
+    lidarLite.begin(0, true);
+    Serial.println("LIDAR initialized");
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-}
-
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
+    int distance = lidarLite.distance();
+    Serial.print("Distance: ");
+    Serial.print(distance);
+    Serial.println(" cm");
+    delay(100);
 }
