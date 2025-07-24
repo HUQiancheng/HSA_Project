@@ -60,7 +60,7 @@ class MotorController:
         
         # Extract forces with correct mapping
         f_front = forces[CELL_FRONT]
-        f_left = forces[CELL_RIGHT]
+        f_left = forces[CELL_RIGHT] # In the real world motor, this should be CELL_RIGHT but not left, as we have already tested it
         f_back = forces[CELL_BACK]
         f_right = forces[CELL_LEFT]
         

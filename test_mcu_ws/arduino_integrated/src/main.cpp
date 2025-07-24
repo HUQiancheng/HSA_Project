@@ -1,18 +1,36 @@
 #include <Arduino.h>
+#include "motor_control.h"
+#include "lidar_sensor.h"
 
-// put function declarations here:
-int myFunction(int, int);
+unsigned long lastLidarRead = 0;
 
-void setup() {
-  // put your setup code here, to run once:
-  int result = myFunction(2, 3);
+void setup()
+{
+  Serial.begin(9600);
+  setupMotors();
+  setupLidar();
+  Serial.println("System ready");
 }
 
-void loop() {
-  // put your main code here, to run repeatedly:
-}
-
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
+void loop()
+{
+  // motor
+  if (Serial.available())
+  {
+    String input = Serial.readStringUntil('\n');
+    input.trim();
+    int pwmA, dirA, pwmB, dirB;
+    if (sscanf(input.c_str(), "%d,%d,%d,%d", &pwmA, &dirA, &pwmB, &dirB) == 4)
+    {
+      setMotor(pwmA, dirA, pwmB, dirB);
+    }
+  }
+  
+  //lidar
+  if (millis() - lastLidarRead > 100) {
+    int distance = getDistance();
+    Serial.print("L:");
+    Serial.println(distance);
+    lastLidarRead = millis();
+  }
 }
