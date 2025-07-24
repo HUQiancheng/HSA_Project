@@ -31,7 +31,7 @@ roscore
 ### Step 2: Connect to E-Skin Hardware
 In a new terminal, launch the skin driver:
 ```bash
-roslaunch tum_ics_skin_driver_events skin_driver_ftdi.launch FTDI_SERIAL:=FT6B8EHV
+roslaunch skin_force_publisher force_publisher.launch
 ```
 
 You should see output confirming 4 skin cells are detected:
