@@ -82,5 +82,11 @@ target_link_libraries(force_publisher_node
 ## Enable Qt MOC (Meta-Object Compiler) for Qt signal/slot mechanism
 set_target_properties(force_publisher_node PROPERTIES AUTOMOC TRUE)
 
+catkin_install_python(PROGRAMS
+  scripts/motor_control.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+
 ## Set C++ standard
 set_property(TARGET force_publisher_node PROPERTY CXX_STANDARD 14)
