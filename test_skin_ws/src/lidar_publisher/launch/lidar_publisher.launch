@@ -1,0 +1,15 @@
+<launch>
+    <!-- LIDAR Publisher Node -->
+    <node name="lidar_publisher" pkg="lidar_publisher" type="lidar_publisher_node.py" output="screen">
+        <!-- Serial port settings -->
+        <param name="port" value="/dev/ttyACM0"/>
+        <param name="baudrate" value="9600"/>
+        
+        <!-- ROS settings -->
+        <param name="frame_id" value="lidar_link"/>
+        <param name="topic" value="/lidar_distance"/>
+    </node>
+    
+    <!-- Optional: View in RViz -->
+    <!-- <node name="rviz" pkg="rviz" type="rviz" args="-d $(find lidar_publisher)/rviz/lidar.rviz"/> -->
+</launch>

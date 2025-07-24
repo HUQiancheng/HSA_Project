@@ -5,11 +5,11 @@ This example demonstrates how to interface with the TUM ICS e-skin sensors to re
 
 ## What This Example Does
 The force publisher node performs these steps:
-1. Loads the e-skin patch configuration from `launch/configs/default.xml`
+1. Loads the e-skin patch configuration
 2. Establishes connection to 4 e-skin sensor units (IDs 1-4)
 3. Continuously reads force data from each unit
 4. Averages the 3 force sensors within each unit
-5. Publishes the 4 averaged values as a Float64MultiArray on `/skin_forces` topic
+5. Publishes the 4 averaged values as a FourCellForces message on `/skin_forces` topic
 
 ## System Architecture
 ```
@@ -17,10 +17,15 @@ The force publisher node performs these steps:
                                                           |
                                                           v
                                               Reads from config file
-                                              (launch/configs/default.xml)
 ```
 
-## Running the Example
+## Running the System
+
+### Prerequisites
+Run the permissions setup script once:
+```bash
+sudo ./set_permissions.sh
+```
 
 ### Step 1: Start ROS Master
 Open a terminal and run:
@@ -28,28 +33,23 @@ Open a terminal and run:
 roscore
 ```
 
-### Step 2: Connect to E-Skin Hardware
-In a new terminal, launch the skin driver:
-```bash
-roslaunch tum_ics_skin_driver_events skin_driver_ftdi.launch FTDI_SERIAL:=FT6B8EHV
-```
-
-You should see output confirming 4 skin cells are detected:
-```
-Num of skin cells: 4
-Connected
-```
-
-### Step 3: Launch the Force Publisher
-In another terminal:
+### Step 2: Launch Complete E-Skin System
+In a new terminal:
 ```bash
 cd /workspaces/HSA_Project/test_skin_ws
 source devel/setup.bash
-roslaunch launch/skin_force_publisher/force_publisher.launch
+roslaunch skin_force_publisher force_publisher.launch
 ```
+
+This integrated launch file will:
+1. **Connect to e-skin hardware** (equivalent to the old skin driver step)
+2. **Start force publisher node** (reads and publishes sensor data)
+3. **Start motor controller** (translates forces to motor commands)
 
 You should see output like:
 ```
+Num of skin cells: 4
+Connected
 Successfully loaded patch with 4 cells
 Cell IDs in patch:
   Index 0 -> Cell ID 1
@@ -57,10 +57,11 @@ Cell IDs in patch:
   Index 2 -> Cell ID 3
   Index 3 -> Cell ID 4
 Forces: [0.0039, 0.0049, 0.0029, 0.0039]
+✅ Motor controller ready, listening to /skin_forces
 ```
 
-### Step 4: Monitor the Published Data
-In a fourth terminal, view the real-time force data:
+### Step 3: Monitor the System (Optional)
+In another terminal, view the real-time force data:
 ```bash
 rostopic echo /skin_forces
 ```
@@ -72,10 +73,10 @@ data: [0.00390625, 0.00488281, 0.00292969, 0.00390625]
 ```
 
 Each value represents the averaged force from one e-skin unit. The array indices correspond to:
-- Index 0: Cell ID 1
-- Index 1: Cell ID 2  
-- Index 2: Cell ID 3
-- Index 3: Cell ID 4
+- Index 0: Cell ID 1 (Front)
+- Index 1: Cell ID 2 (Left)
+- Index 2: Cell ID 3 (Back)  
+- Index 3: Cell ID 4 (Right)
 
 ## Testing the Sensors
 To verify the system is working correctly:
@@ -86,8 +87,14 @@ To verify the system is working correctly:
 The force values are in uncalibrated units. Typical baseline values are around 0.003-0.005, and can increase to 0.1 or higher with moderate pressure.
 
 ## Understanding the Code
-The main source file is at `src/skin_force_publisher/src/force_publisher_node.cpp`. Key components:
+The main source files are:
 
+- **`src/force_publisher_node.cpp`**: Main C++ node for data processing
+- **`scripts/motor_control.py`**: Motor control functionality
+- **`scripts/motor_test.py`**: Motor testing utilities
+- **`msg/FourCellForces.msg`**: Custom message definition
+
+Key components:
 - **Patch Loading**: Uses TfMarkerDataPatch class to load sensor configuration
 - **Data Connection**: Establishes real-time data stream from skin driver
 - **Force Averaging**: Each e-skin unit has 3 force sensors that are averaged
@@ -96,24 +103,29 @@ The main source file is at `src/skin_force_publisher/src/force_publisher_node.cp
 ## Troubleshooting
 
 ### No data published
-- Check that all 3 systems are running (roscore, skin driver, force publisher)
+- Check that ROS core is running (`roscore`)
 - Verify the e-skin hardware is connected and powered
-- Check that `default.xml` exists at the expected path
+- Ensure the launch file starts successfully without errors
 
 ### All zeros in output
 - The skin driver may not be detecting the sensors
-- Try running `cf on` in the skin driver terminal to enable color feedback
 - Check USB connection and power to the e-skin units
+- Verify sensor configuration is loaded correctly
 
 ### Build errors
 - Ensure all dependencies are installed
 - Clean and rebuild: `cd /workspaces/HSA_Project/test_skin_ws && rm -rf build devel && catkin_make`
+- Source the workspace: `source devel/setup.bash`
+
+### Permission issues
+- Ensure Python scripts have execute permissions: `chmod +x scripts/*.py`
+- Check USB device permissions for hardware connections
 
 ## Adapting This Example
 To use this code as a starting point for your own applications:
 1. Copy the package structure
 2. Modify the data processing logic in the main loop
-3. Change the output message type if needed
+3. Change the output message type if needed (see `msg/FourCellForces.msg`)
 4. Adjust the publishing rate as required
 
 Remember that the e-skin sensors can also provide proximity, acceleration, and temperature data if needed for your application.

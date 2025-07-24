@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- Integrated E-Skin System Launch File -->
+    <!-- Combines: skin driver + force publisher + motor control -->
+    
+    <!-- Step 1: Launch the TUM ICS skin driver to connect to hardware -->
+    <include file="$(find tum_ics_skin_driver_events)/launch/skin_driver_ftdi.launch">
+        <arg name="FTDI_SERIAL" value="FT6B8EHV"/>
+    </include>
+    
+    <!-- Step 2: Launch the force publisher node (waits for skin driver to sync) -->
+    <node name="skin_force_publisher" 
+          pkg="skin_force_publisher" 
+          type="force_publisher_node" 
+          output="screen"
+          required="true"
+          launch-prefix="bash -c 'sleep 5; exec $0 $@'">
+        
+        <!-- Qt configuration for headless systems -->
+        <env name="QT_QPA_PLATFORM" value="offscreen"/>
+    </node>
+    
+    <!-- Step 3: Launch motor control node (waits for force publisher to be ready) -->
+    <node name="motor_controller" 
+          pkg="skin_force_publisher" 
+          type="motor_control.py" 
+          output="screen"
+          required="true"
+          launch-prefix="bash -c 'sleep 8; exec $0 $@'"/>
+    
+</launch>
