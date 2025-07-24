@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-
 import rospy
-from sensor_msgs.msg import Range
+from sensor_msgs.msg import LaserScan  # Changed to LaserScan message type
 import serial
 import time
 
@@ -12,16 +11,16 @@ class LidarPublisher:
         # Parameters
         self.port = rospy.get_param('~port', '/dev/ttyACM0')
         self.baudrate = rospy.get_param('~baudrate', 9600)
-        self.frame_id = rospy.get_param('~frame_id', 'lidar_link')
+        self.frame_id = rospy.get_param('~frame_id', 'lidar_lite')  # Match C++ code frame_id
         
-        # Publisher
-        self.range_pub = rospy.Publisher('/lidar_distance', Range, queue_size=10)
+        # Publisher - Changed to scan topic with LaserScan message type
+        self.scan_pub = rospy.Publisher('/scan', LaserScan, queue_size=10)
         
         # Serial connection
         try:
             self.ser = serial.Serial(self.port, self.baudrate, timeout=1)
             rospy.loginfo(f"Connected to {self.port}")
-            rospy.loginfo(f"LIDAR Publisher started on {self.port}")
+            rospy.loginfo(f"LIDAR Publisher started on {self.port}, publishing LaserScan to /scan")
             time.sleep(2)  # Arduino reset time
             self.ser.reset_input_buffer()  # Clear any startup garbage
         except Exception as e:
@@ -44,9 +43,9 @@ class LidarPublisher:
                     # Parse "L:xxx" format
                     if line.startswith("L:") and len(line) > 2:
                         try:
-                            distance_cm = int(line[2:])-10 # Lidar has a 10cm correction as initial distance
+                            distance_cm = int(line[2:]) - 10  # Lidar has a 10cm correction as initial distance
                             if 1 <= distance_cm <= 4000:  # Valid range check
-                                self.publish_range(distance_cm)
+                                self.publish_laserscan(distance_cm)
                         except ValueError:
                             rospy.logdebug(f"Invalid distance value: {line}")
                             
@@ -63,18 +62,40 @@ class LidarPublisher:
             self.ser.close()
             rospy.loginfo("Serial port closed")
             
-    def publish_range(self, distance_cm):
-        msg = Range()
+    def publish_laserscan(self, distance_cm):
+        """
+        Publish LaserScan message - wrap single-point LiDAR data into LaserScan format
+        Following the C++ code configuration
+        """
+        msg = LaserScan()
+        
+        # Header configuration
         msg.header.stamp = rospy.Time.now()
         msg.header.frame_id = self.frame_id
-        msg.radiation_type = Range.INFRARED
-        msg.field_of_view = 0.008  # ~0.5 degree
-        msg.min_range = 0.01  # 1cm
-        msg.max_range = 40.0  # 40m
-        msg.range = distance_cm / 100.0  # Convert to meters
         
-        self.range_pub.publish(msg)
-        rospy.loginfo(f"Distance: {distance_cm} cm ({msg.range:.2f} m)")
+        # Angle configuration - single-point LiDAR, so angle range is 0
+        msg.angle_min = 0.0
+        msg.angle_max = 0.0
+        msg.angle_increment = 1.0
+        
+        # Time configuration
+        msg.time_increment = 0.0
+        msg.scan_time = 0.0  # Commented in C++ code, but we can set it
+        
+        # Range configuration
+        msg.range_min = 0.0
+        msg.range_max = 40.0
+        
+        # Distance data - convert to meters
+        distance_in_meters = distance_cm / 100.0
+        msg.ranges = [distance_in_meters]  # Single-point data array
+        
+        # Intensity data - use original cm value as intensity (following C++ code)
+        msg.intensities = [float(distance_cm)]
+        
+        # Publish message
+        self.scan_pub.publish(msg)
+        rospy.loginfo(f"Distance: {distance_cm} cm ({distance_in_meters:.2f} m) -> LaserScan published")
 
 if __name__ == '__main__':
     try:
