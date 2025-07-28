@@ -26,6 +26,6 @@
           type="motor_control.py" 
           output="screen"
           required="true"
-          launch-prefix="bash -c 'sleep 8; exec $0 $@'"/>
+          launch-prefix="bash -c 'sleep 12; exec $0 $@'"/>
     
 </launch>
