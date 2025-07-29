@@ -37,8 +37,8 @@ def generate_launch_description():
                 {"gain_mag": 0.01}
             ],
             remappings=[
-                ("imu/data_raw", "imu/data_raw"),  # 输入
-                ("imu/data", "imu")       # 输出到/imu
+                ("imu/data_raw", "imu/data_raw"),  
+                ("imu/data", "imu")      
             ]
         ),
 
@@ -49,6 +49,7 @@ def generate_launch_description():
             output='screen',
         ),
 
+        # IMU tf: base_link -> imu_link    
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',
@@ -65,6 +66,7 @@ def generate_launch_description():
             parameters=[{'use_sim_time': False}]
         ),
 
+        # robot_localization ekf
         Node(
             package='robot_localization',
             executable='ekf_node',
@@ -72,19 +74,10 @@ def generate_launch_description():
             output='screen',
             parameters=[config_dir],
             remappings=[
-                ('odometry/filtered', '/odometry/odom_filtered'),
-                ('/tf', 'tf'),
-                ('/tf_static', 'tf_static')  
+                ('odometry/filtered', '/odometry/odom_filtered')
             ]
         ),
-        # Node(
-        #     package='robot_localization',
-        #     executable='ekf_node',
-        #     name='ekf_map_node',
-        #     output='screen',
-        #     parameters=[config_dir],
-        #     remappings=[ ('odometry/filtered', '/odometry/filtered_map') ]
-        # ),
+
         Node(
             package='sensor_publisher',
             executable='path_publisher',
@@ -106,6 +99,7 @@ def generate_launch_description():
             arguments=['-0.03', '0', '0', '0', '0', '0', 'base_link', 'laser'],
             parameters=[{'use_sim_time': False}]
         ),
+
         Node(
             package='slam_toolbox',
             executable='async_slam_toolbox_node',
@@ -113,32 +107,31 @@ def generate_launch_description():
             output='screen',
             parameters=[{
                 'use_sim_time': False,
-                'slam_params_file': config_dir_gmapping,
-                # 关键参数 ↓↓↓
-                'scan_queue_size': 200,          # 再把队列拉大
-                'throttle_scans': 3,              # 只处理每 3 帧（按需再调大 5、10）
-                'minimum_time_between_update': 0.1, # 最快 10Hz 更新一次地图（再慢点可 0.2）
-                'transform_timeout': 0.5,
-                'transform_tolerance': 1.0,
-                'delay': 0.2,   
-                'use_approximate_sync': True,
+                
                 'odom_frame': 'odom',
                 'base_frame': 'base_link',
                 'map_frame': 'map',
                 'scan_topic': '/scan',
+                
+                'slam_params_file': config_dir_gmapping,
+                'throttle_scans': 1,
+                'transform_publish_period': 0.02,
+                'map_update_interval': 5.0,
+                'resolution': 0.05,
+                'transform_timeout': 0.2,
+                'transform_tolerance': 0.1, 
+                
+                'use_approximate_sync': False,  
+                'minimum_time_interval': 0.1,
+
+                'use_scan_matching': True,
+                'minimum_travel_distance': 0.1,
+                'minimum_travel_heading': 0.1,
+                'scan_buffer_size': 10,
+                'do_loop_closing': True,
+               
                 'odom_topic': '/odometry/odom_filtered'
             }],
           
         ),
-        # Node(
-        #     package='slam_toolbox',
-        #     executable='map_saver_cli',
-        #     name='map_saver',
-        #     output='screen',
-        #     parameters=[{
-        #         'use_sim_time': False,
-        #         'filename': os.path.join(get_package_share_directory('sensor_publisher'), 'maps', 'map')
-        #     }],
-        #     arguments=['-f', os.path.join(get_package_share_directory('sensor_publisher'), 'maps', 'map')]
-        # ),
     ])

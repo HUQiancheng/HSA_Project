@@ -14,11 +14,9 @@ class BNO085Publisher(Node):
     def __init__(self):
         super().__init__('bno085_imu_node')
 
-      
         i2c = busio.I2C(board.SCL, board.SDA)
         self.bno = bno08x_i2c.BNO08X_I2C(i2c, address=0x4A)
 
-      
         self.bno.enable_feature(adafruit_bno08x.BNO_REPORT_ACCELEROMETER)
         self.bno.enable_feature(adafruit_bno08x.BNO_REPORT_GYROSCOPE)
         self.bno.enable_feature(adafruit_bno08x.BNO_REPORT_MAGNETOMETER)
@@ -27,7 +25,6 @@ class BNO085Publisher(Node):
         self.imu_pub = self.create_publisher(Imu, 'imu/data_raw', 20)
         self.mag_pub = self.create_publisher(MagneticField, '/imu/mag', 20)
 
-       
         self.timer = self.create_timer(0.05, self.publish_data)  # 20Hz
 
     def publish_data(self):
@@ -38,7 +35,6 @@ class BNO085Publisher(Node):
 
         now = self.get_clock().now().to_msg()
 
-   
         imu_msg = Imu()
         imu_msg.header.stamp = now
         imu_msg.header.frame_id = 'imu_link'

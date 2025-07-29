@@ -69,7 +69,6 @@ class Encoder:
         else:
             edge_type = GPIO.FALLING
 
-        # bouncetime 需要根据你的编码器速度酌情调大/调小
         GPIO.add_event_detect(self.pin, edge_type, callback=self._pulse, bouncetime=debounce)
 
     def _pulse(self, channel):
@@ -89,21 +88,18 @@ class EncoderOdomNode(Node):
     def __init__(self):
         super().__init__('encoder_odometry_node')
 
-        # ==========================
-        #        可配置参数
-        # ==========================
         self.declare_parameter('left_pin', 17)
         self.declare_parameter('right_pin', 27)
-        self.declare_parameter('wheel_diameter', 0.07)      # m
-        self.declare_parameter('wheel_track', 0.135)          # m（两轮中心距）
-        self.declare_parameter('encoder_resolution', 40)     # 每圈脉冲数
+        self.declare_parameter('wheel_diameter', 0.07)     
+        self.declare_parameter('wheel_track', 0.135)        
+        self.declare_parameter('encoder_resolution', 40)     
         self.declare_parameter('gear_reduction', 1.0)
-        self.declare_parameter('edges_per_pulse', 1.0)       # 若使用 BOTH/RISING 需修正
-        self.declare_parameter('publish_rate', 50.0)         # Hz
+        self.declare_parameter('edges_per_pulse', 1.0)      
+        self.declare_parameter('publish_rate', 50.0)         
         self.declare_parameter('publish_tf', False)
-        self.declare_parameter('odom_frame', 'odom')          # 推荐用 'odom'
+        self.declare_parameter('odom_frame', 'odom')         
         self.declare_parameter('base_link_frame', 'base_link')
-        self.declare_parameter('motors_reversed', False)     # 如果方向反了可以调这个
+        self.declare_parameter('motors_reversed', True)    
         self.declare_parameter('debug', False)
 
         left_pin  = self.get_parameter('left_pin').value
@@ -120,25 +116,18 @@ class EncoderOdomNode(Node):
         self.motors_reversed    = self.get_parameter('motors_reversed').value
         self.debug              = self.get_parameter('debug').value
 
-        # ==========================
-        #         初始化 GPIO
-        # ==========================
         GPIO.setmode(GPIO.BCM)
-        # 这里默认用 FALLING，必要时你可以换成 BOTH/RISING 并把 edges_per_pulse 调整为 2
         self.encoder_left  = Encoder(left_pin,  edge='falling', debounce=2)
         self.encoder_right = Encoder(right_pin, edge='falling', debounce=2)
 
-        # 每米脉冲数（注意 edges_per_pulse）
         # ticks_per_rev = encoder_resolution * gear_reduction * edges_per_pulse
         self.ticks_per_rev   = self.encoder_resolution * self.gear_reduction * self.edges_per_pulse
         self.ticks_per_meter = self.ticks_per_rev / (self.wheel_diameter * pi)
 
-        # 发布器 / TF
         self.odom_pub = self.create_publisher(Odometry, 'wheel_odom', 10)
         if self.publish_tf:
             self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
 
-        # 里程计状态
         self.x = 0.0
         self.y = 0.0
         self.th = 0.0
@@ -147,7 +136,6 @@ class EncoderOdomNode(Node):
         self.last_right = 0
         self.last_time  = self.get_clock().now()
 
-        # 定时器
         self.timer = self.create_timer(1.0 / self.publish_rate, self.update)
 
         self.get_logger().info(
@@ -163,11 +151,9 @@ class EncoderOdomNode(Node):
         if dt <= 0.0:
             return
 
-        # 当前总计数
         left_total  = self.encoder_left.get_count()
         right_total = self.encoder_right.get_count()
 
-        # 增量
         delta_left  = left_total  - self.last_left
         delta_right = right_total - self.last_right
 
@@ -175,20 +161,16 @@ class EncoderOdomNode(Node):
         self.last_right = right_total
         self.last_time  = now
 
-        # 如果电机方向接反，这里可以统一取反
         if self.motors_reversed:
             delta_left  = -delta_left
             delta_right = -delta_right
 
-        # 脉冲数 -> 距离
         dleft  = delta_left  / self.ticks_per_meter
         dright = delta_right / self.ticks_per_meter
 
-        # 计算线速度和角速度增量
         dxy = (dleft + dright) / 2.0
         dth = (dright - dleft) / self.wheel_track
 
-        # 计算新的位置增量
         if abs(dxy) > 0.0:
             dx = dxy * cos(self.th)
             dy = dxy * sin(self.th)
@@ -199,18 +181,16 @@ class EncoderOdomNode(Node):
             self.th += dth
             self.th = normalize_angle(self.th)
 
-        # 速度
+
         vx  = dxy / dt
         vth = dth / dt
 
-        # 四元数（2D）
         quat = Quaternion()
         quat.x = 0.0
         quat.y = 0.0
         quat.z = sin(self.th / 2.0)
         quat.w = cos(self.th / 2.0)
 
-        # 里程计消息
         odom = Odometry()
         odom.header.stamp = now.to_msg()
         odom.header.frame_id = self.odom_frame
@@ -221,28 +201,9 @@ class EncoderOdomNode(Node):
         odom.pose.pose.position.z = 0.0
         odom.pose.pose.orientation = quat
 
-        # 合理的协方差（你可根据经验/需求调整）
-        # odom.pose.covariance = [
-        #     0.001, 0.0, 0.0, 0.0, 0.0, 0.0,
-        #     0.0, 0.001, 0.0, 0.0, 0.0, 0.0,
-        #     0.0, 0.0, 99999.0, 0.0, 0.0, 0.0,
-        #     0.0, 0.0, 0.0, 99999.0, 0.0, 0.0,
-        #     0.0, 0.0, 0.0, 0.0, 99999.0, 0.0,
-        #     0.0, 0.0, 0.0, 0.0, 0.0, 0.01
-        # ]
-
         odom.twist.twist.linear.x  = vx
         odom.twist.twist.linear.y  = 0.0
         odom.twist.twist.angular.z = vth
-
-        # odom.twist.covariance = [
-        #     0.001, 0.0, 0.0, 0.0, 0.0, 0.0,
-        #     0.0, 0.001, 0.0, 0.0, 0.0, 0.0,
-        #     0.0, 0.0, 99999.0, 0.0, 0.0, 0.0,
-        #     0.0, 0.0, 0.0, 99999.0, 0.0, 0.0,
-        #     0.0, 0.0, 0.0, 0.0, 99999.0, 0.0,
-        #     0.0, 0.0, 0.0, 0.0, 0.0, 0.01
-        # ]
 
         self.odom_pub.publish(odom)
         
@@ -253,7 +214,6 @@ class EncoderOdomNode(Node):
             odom.pose.covariance = ODOM_POSE_COVARIANCE
             odom.twist.covariance = ODOM_TWIST_COVARIANCE
 
-        # 发布 TF
         if self.publish_tf:
             t = TransformStamped()
             t.header.stamp = now.to_msg()

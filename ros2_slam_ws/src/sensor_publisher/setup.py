@@ -26,16 +26,9 @@ setup(
     entry_points={
         'console_scripts': [
             'imu_node = sensor_publisher.imu_node:main',
-            'encoder_node = sensor_publisher.encoder_node:main',
             'encoder_node1 = sensor_publisher.encoder_node1:main',
-            'lidar_lite_node = sensor_publisher.lidar_lite_node:main',
-            'fusion_node = sensor_publisher.fusion_node:main',
-            'encoder_to_odom_node = sensor_publisher.encoder_to_odom_node:main',
-            'imu = sensor_publisher.imu:main',
             'lidar_node = sensor_publisher.lidar_node:main',
-            'encoder = sensor_publisher.encoder:main',
             'path_publisher = sensor_publisher.path_publisher:main',
-            'listener = sensor_publisher.listener:main',
         ],
     },
 )
