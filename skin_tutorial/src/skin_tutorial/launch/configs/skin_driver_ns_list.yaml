@@ -1,7 +1,0 @@
-skin_driver_ns_list:
- [
-  '/', 
-  '/skin/upper_arm',
-  '/skin/lower_arm',  
- ]
-
