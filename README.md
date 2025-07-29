@@ -1,194 +1,174 @@
-# HSA Project - E-Skin Controlled Vehicle with IMU Trajectory Recording
+# HSA Project - E-Skin Controlled Mobile Robot Platform
 
 ## Project Overview
-This project implements a vehicle control system using TUM ICS electronic skin (e-skin) sensors for directional control, combined with IMU-based trajectory recording and LiDAR sensing. The e-skin sensors detect force inputs that are translated into movement commands for the vehicle.
+This project implements a mobile robot controlled through tactile interaction using TUM ICS electronic skin (e-skin) sensors. The system allows users to guide the robot by touching different sensors, with movement speed proportional to applied force. Additionally, the platform includes IMU trajectory recording and LiDAR mapping capabilities.
+
+## System Architecture
+
+### Dual-Environment Design
+The project uses two separate ROS environments due to hardware access constraints:
+
+1. **Docker Container Environment** (this repository)
+   - Runs ROS Noetic with TUM ICS e-skin drivers
+   - Handles e-skin data processing and motor control
+   - Relays LiDAR data between Arduino and ROS2
+
+2. **Raspberry Pi Native Environment** (separate installation)
+   - Runs ROS2 for SLAM functionality
+   - Direct GPIO access for IMU and wheel encoders
+   - Performs sensor fusion and mapping
+
+### Data Flow
+```
+Docker Container (ROS1):
+E-Skin → skin_force_publisher → motor_control.py → Arduino → Motors
+                                                      ↓
+                                                   LiDAR data
+                                                      ↓
+                              lidar_publisher ← ─ ─ ─ ┘
+                                    ↓
+                              ros_bridge
+                                    ↓
+Raspberry Pi (ROS2):
+IMU + Encoders → sensor_publisher → SLAM (trajectory + map)
+```
+
+## Hardware Components
+
+### Sensors
+- **4× HEX-o-skin Units**: Tactile force sensors
+  - ID 1: Front position
+  - ID 2: Left position  
+  - ID 3: Back position
+  - ID 4: Right position
+- **Garmin LIDAR-Lite v4**: Single-point distance sensor
+- **Adafruit BNO085**: 9-DOF IMU for orientation/acceleration
+- **Wheel Encoders**: Odometry measurement
+
+### Actuators
+- **4× DC Gear Motors**: 2 left side, 2 right side
+- **2× L298N Motor Drivers**: One per side
+
+### Control
+- **Raspberry Pi 5**: Main computer (Debian Bookworm 64-bit)
+- **Arduino UNO**: Low-level hardware interface
 
 ## Repository Structure
 ```
 HSA_Project/
-├── docs/               # Collected documentation and research materials
-├── skin_tutorial/      # TUM ICS skin tutorial examples (reference only)
-├── test_mcu_ws/        # Arduino workspace
-│   └── arduino_integrated/  # Arduino code (PlatformIO project)
-├── test_skin_ws/       # Main ROS development workspace - START HERE
-├── set_permissions.sh  # One-time system permissions setup
-└── build/              # Build artifacts
+├── docs/                    # Hardware datasheets and documentation
+├── ros2_slam_ws/           # ROS2 SLAM documentation (code runs on Pi)
+│   ├── Readme.md           # Detailed SLAM implementation by Liangyu Chen
+│   └── src/
+│       ├── basicsetup.md   # ROS2 setup instructions
+│       └── sensor_publisher/  # Our custom sensor integration package
+├── test_mcu_ws/            # Arduino firmware (PlatformIO)
+│   └── arduino_integrated/  # Motor control + LiDAR interface
+├── test_skin_ws/           # ROS1 workspace (runs in Docker)
+│   └── src/
+│       ├── skin_force_publisher/  # E-skin processing + motor control
+│       └── lidar_publisher/       # LiDAR data relay to ROS2
+└── set_permissions.sh      # USB/serial port permissions setup
 ```
 
-## Important Development Guidelines
-### ⚠️ BEFORE YOU START
-1. **Never push directly to main/master branch**
-2. **Always create your own feature branch for development**
-3. **Submit pull requests for code review before merging**
+## Module Details
 
-### Getting Started
-```bash
-# Clone the repository
-git clone [repository-url]
+### test_skin_ws (ROS1 Docker)
+Main development workspace running in TUM ICS Docker container.
 
-# Set up permissions (one-time setup)
-sudo ./set_permissions.sh
+#### skin_force_publisher Package
+- **force_publisher_node.cpp**: Reads 4 e-skin units, averages 3 force sensors per unit
+- **FourCellForces.msg**: Custom message containing 4 force values
+- **motor_control.py**: Subscribes to forces, sends motor commands via serial
+- **force_publisher.launch**: Integrated launcher for complete system
 
-# Create your feature branch
-git checkout -b feature/your-feature-name
+Control mapping:
+- Front touch → Backward movement
+- Back touch → Forward movement  
+- Left touch → Rotate right
+- Right touch → Rotate left
 
-# Navigate to the development workspace
-cd test_skin_ws
+#### lidar_publisher Package
+- **lidar_publisher_node.py**: Receives "L:xxx" format from Arduino
+- Publishes LaserScan messages for ROS2 SLAM compatibility
+- 10cm offset correction applied to raw readings
 
-# Open VS Code from here (not from the top level)
-code .
-```
+### test_mcu_ws (Arduino)
+PlatformIO project for Arduino UNO firmware.
 
-## Hardware Configuration
+- **Motor Control**: Receives "pwmA,dirA,pwmB,dirB" commands via serial
+- **LiDAR Interface**: Uses official Garmin library (critical for proper operation)
+- **Serial Protocol**: 9600 baud, bidirectional communication
 
-### Main Platform
-- **Controller**: Raspberry Pi 5 (aarch64)
-- **Operating System**: Debian Bookworm (Raspberry Pi OS)
+### ros2_slam_ws (Documentation Only)
+This folder contains documentation for the ROS2 SLAM system running natively on Raspberry Pi. The actual code resides on the Pi due to GPIO access requirements.
 
-### Arduino Microcontroller System
-- **Arduino Board**: Handles low-level sensor and motor control
-- **Functions**: Motor control, LiDAR data acquisition, serial communication
-- **Connection**: USB serial (/dev/ttyACM0) to Raspberry Pi
-- **Code Location**: `test_mcu_ws/arduino_integrated/` (PlatformIO project)
+Key components documented:
+- Extended Kalman Filter for IMU/encoder fusion
+- Trajectory recording and visualization
+- Single-point LiDAR adaptation for mapping
+- Multi-sensor synchronization
 
-### Sensor System
-- **4x HEX-o-skin Units** (e-skin by TUM ICS)
-  - Layout: Front, Back, Left, Right
-  - ID Assignment: Front=1, Left=2, Back=3, Right=4
-  - Function: Force sensing (other sensing capabilities not utilized)
-- **LiDAR Sensor**: Distance measurement and obstacle detection
-- **IMU**: Adafruit 9-DOF Orientation IMU (BNO085)
-
-### Actuators
-- **Motors**: 4x DC Gear Motors (2 left, 2 right)
-- **Motor Drivers**: 2x L298N (one for each side)
-
-## Software Environment
-### Docker Container (provided by instructor)
-- **Base OS**: Ubuntu 20.04
-- **ROS Version**: Noetic
-- **Purpose**: Integration of e-skin with ROS system
-
-## Control Logic
-The vehicle responds to touches on different e-skin units with specific movements:
-
-| Touched Unit | ID | Movement Behavior |
-|--------------|-----|-------------------|
-| Front | 1 | Motors reverse, move backward |
-| Left | 2 | Turn right in place (left motors forward, right motors reverse) |
-| Back | 3 | Motors forward, move forward |
-| Right | 4 | Turn left in place (right motors forward, left motors reverse) |
-
-*Note: Motor speed is adjusted based on force sensor feedback*
-
-## Quick Start Guide
+## Running the System
 
 ### Prerequisites
-Run the permissions setup script once:
-```bash
-sudo ./set_permissions.sh
-```
+1. Install Docker with TUM ICS ROS skin image
+2. Connect e-skin hardware via USB
+3. Upload Arduino firmware: `cd test_mcu_ws/arduino_integrated && pio run -t upload`
+4. Run permissions script: `./set_permissions.sh`
 
-### System Startup (Every Test Session)
-```bash
-# Terminal 1: Start ROS Master
-roscore
+### Launch Sequence
 
-# Terminal 2: Launch E-Skin System (integrated)
+#### In Docker Container
+```bash
+# Terminal 1: E-skin and motor control
 cd test_skin_ws
 source devel/setup.bash
 roslaunch skin_force_publisher force_publisher.launch
 
-# Terminal 3: Launch LiDAR System
+# Terminal 2: LiDAR relay
 roslaunch lidar_publisher lidar_publisher.launch
 ```
 
-### Monitoring System Data
+#### On Raspberry Pi (separate)
 ```bash
-# View real-time force data
+# See ros2_slam_ws/basicsetup.md for full instructions
+ros2 launch sensor_publisher slam_localization_launch.py
+```
+
+### Monitor System
+```bash
+# Force data from e-skin
 rostopic echo /skin_forces
 
-# View LiDAR distance readings  
-rostopic echo /lidar_distance
+# LiDAR distance
+rostopic echo /scan
 
-# List all active topics
+# View all topics
 rostopic list
 ```
 
-## Current Progress
+## Implementation Status
 
-### ✅ Completed
-- **E-skin Interface**: Force sensor data acquisition and processing
-- **Arduino Integration**: Low-level motor control and LiDAR data collection
-- **ROS Integration**: Topic publishing and communication system
-- **Motor Control System**: Force-to-movement translation with PWM control
-- **LiDAR System**: Distance sensing capabilities
-- **Custom Message Types**:
-  - `FourCellForces.msg` for e-skin data
-  ```
-  # Averaged force values from 4 skin cells
-  # Index 0 = Cell ID 1 (Front)
-  # Index 1 = Cell ID 2 (Left)
-  # Index 2 = Cell ID 3 (Back)
-  # Index 3 = Cell ID 4 (Right)
-  float64[4] forces
-  ```
+### Completed
+- E-skin force reading and averaging
+- Force-proportional motor control
+- Arduino serial communication
+- LiDAR data acquisition
+- IMU/encoder trajectory recording
+- Basic LiDAR mapping
 
-### 📊 Active ROS Topics
-- `/skin_forces` - E-skin force data (FourCellForces message)
-- `/lidar_distance` - LiDAR sensor readings
+### Future Development Opportunities
+- Obstacle avoidance using LiDAR data
+- Autonomous return-to-origin using recorded trajectory
+- Path planning and navigation
+- Multi-robot coordination
 
-### 🔄 In Development
-- **IMU Integration**: Trajectory recording functionality
-- **System Optimization**: Performance tuning and reliability improvements
+## Development Guidelines
+- Create feature branches for all development
+- Test changes in isolated components before integration
+- Document serial protocols and message formats
+- Maintain separation between ROS1 and ROS2 components
 
-## Available ROS Packages
-
-### `skin_force_publisher`
-- **Function**: Complete e-skin system integration
-- **Components**: Force data processing, motor control, hardware communication
-- **Launch**: `roslaunch skin_force_publisher force_publisher.launch`
-- **Features**: Includes skin driver connection and motor control integration
-
-### `lidar_publisher` 
-- **Function**: LiDAR data processing and publishing
-- **Launch**: `roslaunch lidar_publisher lidar_publisher.launch`
-- **Output**: Distance measurements on `/lidar_distance` topic
-
-## Project Components Status
-- **E-Skin Interface** (Lukas): Force sensor data acquisition and processing ✅
-- **Arduino Integration**: Low-level control and communication ✅
-- **Motor Control System**: Force-to-movement translation ✅
-- **LiDAR System**: Environmental sensing ✅
-- **IMU Integration**: Trajectory recording 🔄
-- **System Integration**: Component coordination and optimization 🔄
-
-## Troubleshooting
-
-### Common Issues
-- **Permission denied**: Re-run `sudo ./set_permissions.sh`
-- **No data published**: Check hardware connections and launch sequence
-- **Build errors**: Clean rebuild with `rm -rf build devel && catkin_make`
-
-### Hardware Verification
-```bash
-# Check USB connections
-ls -l /dev/ttyACM*
-
-# Verify ROS topics
-rostopic list
-
-# Monitor system status
-rqt_graph
-```
-
-## Next Steps
-For detailed development instructions and package-specific documentation, see:
-- `test_skin_ws/README.md` - ROS workspace development guide
-- `test_skin_ws/src/skin_force_publisher/readme.md` - E-skin system details
-- Individual package documentation in respective directories
-
-## Architecture Notes
-- **Unified Arduino Control**: Single Arduino handles both motor control and LiDAR sensing
-- **Integrated Launch Files**: Simplified startup process with automatic component coordination  
-- **Modular Design**: Each ROS package handles specific functionality while maintaining clean interfaces
+---
+HSA Project Team 2024
