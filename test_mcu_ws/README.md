@@ -26,6 +26,15 @@ L:xxx
 - Sends distance in cm every 100ms
 - Example: `L:150` (150cm distance)
 
+## Structure
+```
+test_mcu_ws/
+└── arduino_integrated/
+    ├── include/         # Header files
+    ├── src/            # Implementation
+    └── platformio.ini  # PlatformIO config
+```
+
 ## Build & Upload
 ```bash
 cd test_mcu_ws/arduino_integrated
