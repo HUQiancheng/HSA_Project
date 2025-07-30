@@ -1,116 +1,90 @@
-# HSA Project - E-Skin Controlled Vehicle with SLAM
+# Robotic Localization and SLAM System
 
-## Project Overview
-E-Skin tactile sensor controlled mobile robot with IMU trajectory recording and SLAM capabilities.
+## Overview
 
-### Hardware Configuration
-- **Main Controller**: Raspberry Pi 5 (Debian Bookworm 64-bit)
-- **Tactile Sensors**: 4× HEX-o-skin (ID 1-4: front/left/back/right)
-- **IMU**: Adafruit BNO085 (9-DOF)
-- **Distance Sensor**: Garmin LIDAR-Lite v4 (single-point)
-- **Actuators**: 4× DC gear motors with dual L298N drivers
-- **Microcontroller**: Arduino UNO
+ROS2 SLAM system for Raspberry Pi 5 using wheel encoders, IMU, and single-point distance sensor. Enables mapping and localization with minimal hardware through software innovation.
 
-## Project Structure
-```
-HSA_Project/
-├── docs/                    # Hardware documentation
-├── ros2_slam_ws/           # ROS2 SLAM workspace (documentation snapshot)
-├── test_mcu_ws/            # Arduino control code (PlatformIO)
-├── test_skin_ws/           # ROS Noetic tactile sensor workspace
-└── set_permissions.sh      # Port permission script
-```
-
-## Important Note on ROS2 SLAM Workspace
-The ROS2 SLAM system was developed by Liangyu Chen directly on Raspberry Pi 5 hardware. This repository contains a documentation snapshot - the code cannot be executed without the complete ROS2 workspace structure and hardware setup that exists on the original Raspberry Pi system. External libraries and dependencies have been removed.
-
-For detailed technical architecture and implementation details, see:
-- `ros2_slam_ws/Readme.md`
-- `ros2_slam_ws/src/basicsetup.md`
-
-## Original Code Components
-
-### ROS2 SLAM Module (`ros2_slam_ws/`)
-Sophisticated robotic localization and SLAM system featuring:
-- Multi-sensor fusion (wheel encoders, IMU, distance sensor)
-- Extended Kalman Filter implementation
-- SLAM adapted for single-point distance sensors
-- Real-time trajectory recording and visualization
-
-### Arduino Control Module (`test_mcu_ws/arduino_integrated/`)
-- **Headers**:
-  - `include/motor_control.h` - Motor control interface
-  - `include/lidar_sensor.h` - Distance sensor interface
-- **Source**:
-  - `src/main.cpp` - Main control program
-  - `src/motor_control.cpp` - Motor driver implementation
-  - `src/lidar_sensor.cpp` - Distance sensor driver
-- **Configuration**:
-  - `platformio.ini` - PlatformIO project configuration
-
-### ROS Tactile Sensor Module (`test_skin_ws/src/`)
-- **skin_force_publisher package**:
-  - `msg/FourCellForces.msg` - Custom message format
-  - `src/force_publisher_node.cpp` - Force data processing node
-  - `scripts/motor_control.py` - Tactile-based motor control
-  - `launch/force_publisher.launch` - Package launcher
-- **lidar_publisher package**:
-  - `scripts/lidar_publisher_node.py` - Distance sensor ROS wrapper
-  - `launch/lidar_publisher.launch` - Sensor launcher
+**Note**: This workspace runs on Raspberry Pi 5. Code provided for documentation purposes.
 
 ## System Architecture
+
+**Sensor Layer**: Hardware interfaces (encoders, IMU, distance sensor)
+**Fusion Layer**: Extended Kalman Filter combining sensor data  
+**SLAM Layer**: Map building from sparse sensor data
+**Visualization**: Path tracking and RViz integration
+
+## Core Components
+
+### encoder_node1.py - Wheel Odometry
+- GPIO interrupt-based encoder counting
+- Differential drive kinematics: `linear_vel = (left + right)/2`, `angular_vel = (right - left)/wheelbase`
+- Dynamic covariance: High confidence when stationary, lower when moving
+- Publishes to `/wheel_odom`
+
+### imu_node.py - BNO085 Interface  
+- I2C communication with BNO085 sensor
+- 20Hz publication of quaternion orientation, angular velocity, linear acceleration
+- Publishes raw data to `/imu/data_raw` for external filtering
+
+### lidar_node.py - Virtual 360° Scanner
+**Key Innovation**: Converts single-point distance sensor to SLAM-compatible scan data
+- Maps distance readings to 72 angular bins (5° resolution) based on robot heading
+- Uses odometry feedback to determine current angle: `angle_index = int(robot_yaw/(2π) * 72)`
+- Smooths neighboring angles with noise-augmented data
+- Publishes LaserScan to `/scan`
+
+### path_publisher.py - Trajectory Recording
+- Subscribes to `/odometry/odom_filtered`
+- Accumulates robot positions into Path message
+- Publishes trajectory to `/trajectory` for RViz visualization
+
+### simple_map_publisher.py - Test Map
+- Publishes static 10×10 occupancy grid to `/test_map`
+- Used for debugging visualization without SLAM
+
+## Configuration Files
+
+### ekf.yaml - Sensor Fusion Parameters
+- Configures which sensor dimensions feed into EKF
+- `odom0_config`: Uses x,y position, yaw orientation, x,y velocity from encoders
+- `imu0_config`: Uses angular velocity and linear acceleration from IMU
+- Defines process/measurement noise covariance matrices
+
+### slam.yaml - SLAM Parameters
+- Modified for sparse single-point sensor data
+- Reduced matching thresholds: `minimum_travel_distance: 0.02m`
+- Lowered response requirements for scan matching
+- Optimized for limited sensor data vs traditional 360° scanners
+
+### slam_localization_launch.py - System Orchestration
+Launches complete system:
+1. Sensor nodes (IMU, encoders, distance sensor)
+2. Static transforms (sensor→base_link relationships)  
+3. IMU complementary filter
+4. EKF sensor fusion
+5. SLAM algorithm
+6. Path publisher
+
+## Data Flow
+
 ```
-Sensors: HEX-o-skin×4 + IMU (BNO085) + Distance Sensor
-    ↓
-Processing: Raspberry Pi 5 (ROS/ROS2) + Arduino (low-level control)
-    ↓
-Actuators: 4×DC motors (L298N drivers)
+Hardware → Sensor Nodes → Processing → Fusion → SLAM
+Encoders → encoder_node1 → /wheel_odom → EKF → slam_toolbox
+BNO085 → imu_node → /imu/data_raw → filter → /imu → EKF ↗  
+Distance → lidar_node → /scan (virtual 360°) → slam_toolbox ↗
 ```
 
-## Quick Start
+## Technical Achievements
 
-### 1. Environment Setup
-```bash
-# Set device permissions
-./set_permissions.sh
+- **Single-point SLAM**: Adapted traditional SLAM for sparse sensor data
+- **Virtual scanning**: Created 360° scan data from single distance sensor
+- **Smart covariance**: Motion-dependent uncertainty modeling
+- **ARM optimization**: Successfully compiled complex packages on Raspberry Pi 5
 
-# Build ROS workspace
-cd test_skin_ws && catkin_make
+## Hardware Requirements
 
-# For ROS2 workspace setup, see ros2_slam_ws/src/basicsetup.md
-
-# Upload Arduino firmware
-cd test_mcu_ws/arduino_integrated
-pio run -t upload
-```
-
-### 2. Run System
-```bash
-# Terminal 1: Tactile sensors
-roslaunch skin_force_publisher force_publisher.launch
-
-# Terminal 2: Distance sensor
-roslaunch lidar_publisher lidar_publisher.launch
-
-# Terminal 3: SLAM system (requires full ROS2 setup on Pi)
-ros2 launch sensor_publisher slam_localization_launch.py
-```
-
-## Key Interfaces
-- **ROS Topics**:
-  - `/skin_forces` - Tactile force data (FourCellForces)
-  - `/lidar_data` - Distance measurements
-- **ROS2 Topics**:
-  - `/imu/data_raw` - Raw IMU data
-  - `/wheel_odom` - Wheel encoder odometry
-  - `/scan` - LaserScan format distance data
-  - `/odometry/odom_filtered` - Fused odometry estimate
-  - `/trajectory` - Robot path history
-
-## Development Guidelines
-- Work in feature branches, merge via PR review
-- Do not edit main branch directly
-- ROS2 components require on-device development/testing
-
----
-**HSA Project Team - 2024**
+- Raspberry Pi 5
+- BNO085 IMU (I2C)
+- Wheel encoders (GPIO pins 17, 27)
+- Serial distance sensor (/dev/ttyACM0)
+- Differential drive robot platform
